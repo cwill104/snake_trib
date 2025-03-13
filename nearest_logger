@@ -1,0 +1,134 @@
+
+library(remotes)
+install_github("DOI-USGS/dataRetrieval",
+               build_vignettes = TRUE,     
+               build_opts = c("--no-resave-data",
+                              "--no-manual"))
+library(dataRetrieval)
+library(lubridate)
+library(dplyr)
+library(ggplot2)
+library(tibble)
+library(tidyverse)
+library(geosphere)
+library(fuzzyjoin)
+library(sf)
+####Stationary Temp Data####
+startDate <- "2024-06-01"
+endDate <- "2024-06-30"
+pCode <- "00010"
+
+site_id <- "13013650" # Moose
+moose_june_2024 <- readNWISuv(site_id, pCode, startDate, endDate)
+
+colnames(moose_june_2024) <- c("agency","site_no","datetime_utc","temp","var_cd","tz")
+moose_june_2024$datetime_utc <- as.POSIXct(moose_june_2024$datetime_utc,format="%Y-%m-%d %H:%M:%S",tz="UTC")
+moose_june_2024$date_time <- with_tz(moose_june_2024$datetime_utc,"MST") # add column for local time (MST)
+
+
+moose_june_2024$stream <- "snake"
+moose_june_2024$location <- "moose"
+moose_june_2024$site <- "snake_moose"
+moose_june_2024$device <- NA
+moose_june_2024$serialno <- NA
+moose_june_2024$latitude <- c(43.65405556)
+moose_june_2024$longitude <- c(-110.7154722)
+moose_june_2024 <- moose_june_2024 %>% select(site, latitude, longitude, date_time, temp)
+
+ggplot(moose_june_2024, aes(date_time, temp)) + geom_line(size = 1) + 
+  labs(x="Date",y="Temperature (°C)") + theme_bw() #+ scale_x_datetime(labels = date_format("%b"))
+
+##########
+startDate <- "2024-06-01"
+endDate <- "2024-06-30"
+pCode <- "00010"
+
+site_id <- "13011000" # Dam
+dam_june_2024 <- readNWISuv(site_id, pCode, startDate, endDate)
+
+colnames(dam_june_2024) <- c("agency","site_no","datetime_utc","temp","var_cd","tz")
+dam_june_2024$datetime_utc <- as.POSIXct(dam_june_2024$datetime_utc,format="%Y-%m-%d %H:%M:%S",tz="UTC")
+dam_june_2024$date_time <- with_tz(dam_june_2024$datetime_utc,tz="MST") # add column for local time (MST)
+
+dam_june_2024$stream <- "snake"
+dam_june_2024$location <- "dam"
+dam_june_2024$site <- "snake_dam"
+dam_june_2024$device <- NA
+dam_june_2024$serialno <- NA
+dam_june_2024$latitude <- c(43.85851819)
+dam_june_2024$longitude <- c(-110.5866219)
+dam_june_2024 <- dam_june_2024 %>% select(site, latitude, longitude, date_time, temp)
+
+ggplot(dam_june_2024, aes(date_time, temp)) + geom_line(size = 1) + 
+  labs(x="Date",y="Temperature (°C)") + theme_bw() #+ scale_x_datetime(labels = date_format("%b"))
+
+###################
+
+#combine logger into same df
+loggers_june_2024<-bind_rows(dam_june_2024,moose_june_2024)
+
+###################
+
+# Retrieve site metadata to get coordinates
+site_metadata <- data.frame(
+  site_id = c("snake_dam","snake_moose"),  # Add your Site ID column
+  longitude = c(-110.5866219, -110.7154722),
+  latitude = c(43.85851819, 43.65405556))
+
+######################
+
+####Longitudinal Profile####
+# Load existing trimmed data for June
+trimdata2_DamPac_june <- read_csv("/Users/chuck/Library/CloudStorage/GoogleDrive-cwill104@uwyo.edu/.shortcut-targets-by-id/1JM2QoknF8B3Pc75S9OrH4J_-4ONf7H81/WYACT Team Aquatic Shared/Project Data/FLAMe/Snake R. Files/SnakeDamPac/2024-06-15_SnakeDamPac/trimmed_data.csv")
+#trimdata2 <- read.csv("Google Drive/My Drive/WYACT Team Aquatic Shared/Project Data/FLAMe/Snake R. Files/SnakeDamPac/2024-06-15_SnakeDamPac/trimmed_data.csv")
+trimdata2_DamPac_june$date_time <- as.POSIXct(trimdata2_DamPac_june$date_time, format='%Y-%m-%d %H:%M:%S', tz='UTC')
+trimdata2_DamPac_june$X <- NULL
+trimdata2_DamPac_june$X.1 <- NULL
+#PacDB
+trimdata2_PacDB_june<-read_csv('/Users/chuck/Library/CloudStorage/GoogleDrive-cwill104@uwyo.edu/.shortcut-targets-by-id/1JM2QoknF8B3Pc75S9OrH4J_-4ONf7H81/WYACT Team Aquatic Shared/Project Data/FLAMe/Snake R. Files/SnakePacDB/2024-06-14_SnakePacDB/trimmed_data.csv')
+trimdata2_PacDB_june$date_time <- as.POSIXct(trimdata2_PacDB_june$date_time, format='%Y-%m-%d %H:%M:%S', tz='UTC')
+trimdata2_PacDB_june$X <- NULL
+trimdata2_PacDB_june$X.1 <- NULL
+#DBMoose
+trimdata2_DBMoose_june<-read_csv('/Users/chuck/Library/CloudStorage/GoogleDrive-cwill104@uwyo.edu/.shortcut-targets-by-id/1JM2QoknF8B3Pc75S9OrH4J_-4ONf7H81/WYACT Team Aquatic Shared/Project Data/FLAMe/Snake R. Files/SnakeDBMoose/2024-06-28_SnakeDBMoose/trimmed_data.csv')
+trimdata2_DBMoose_june$date_time <- as.POSIXct(trimdata2_DBMoose_june$date_time, format='%Y-%m-%d %H:%M:%S', tz='UTC')
+trimdata2_DBMoose_june$X <- NULL
+trimdata2_DBMoose_june$X.1 <- NULL
+
+#Combine Trimmed data
+
+june_run<-bind_rows(trimdata2_DamPac_june,trimdata2_PacDB_june,trimdata2_DBMoose_june)
+june_run <- june_run %>% select(latitude, longitude, date_time, temp)
+
+june_run##########################
+
+
+
+# Function to find the nearest stationary logger to a mobile point
+find_nearest_stationary <- function(mobile_point, loggers) {
+  # Extract mobile point's coordinates
+  mobile_coords <- c(mobile_point[2], mobile_point[1])  # latitude [1] and longitude[2]
+  
+  # Calculate distances between the mobile point and all stationary loggers
+  distances <- distVincentySphere(
+    cbind(loggers$longitude, loggers$latitude),  # Matrix of stationary loggers' latitudes and longitudes
+    mobile_coords  # Vector for the mobile point's latitude and longitude
+  )
+  
+  # Find the index of the nearest stationary logger
+  nearest_index <- which.min(distances)
+  
+  # Return the nearest stationary logger's data
+  return(loggers[nearest_index, ])
+}
+
+# Loop through each row of mobile_data to find the nearest stationary logger and combine data
+june_data_with_stationary <- june_run %>%
+  rowwise() %>%
+  mutate(
+    nearest_stationary = list(find_nearest_stationary(c(latitude, longitude), site_metadata)),
+    stationary_site_id = nearest_stationary$site_id,
+    stationary_longitude = nearest_stationary$longitude,
+    stationary_latitude = nearest_stationary$latitude
+  ) %>%
+  select(-nearest_stationary)  # Remove the temporary column
